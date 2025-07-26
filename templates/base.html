@@ -45,6 +45,11 @@
 
     <footer>
         <p>&copy; 2025 Webalkalmazás</p>
+        {% if user %}
+            <p class="text-white me-3">Bejelentkezve: {{ user }}</p>
+            <a class="btn btn-outline-light" href="/logout">Kijelentkezés</a>
+        {% endif %}
+
     </footer>
 
     <script src="/static/script.js"></script>

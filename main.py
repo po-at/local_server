@@ -1,3 +1,4 @@
+from urllib import response
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -8,7 +9,14 @@ from starlette.status import HTTP_303_SEE_OTHER
 from pathlib import Path
 from passlib.hash import bcrypt
 import models
+from itsdangerous import URLSafeSerializer
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+serializer = URLSafeSerializer(SECRET_KEY)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -19,7 +27,11 @@ models.Base.metadata.create_all(bind=engine)
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    user = get_current_user(request)
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "user": user
+    })
 
 def get_db():
     db = SessionLocal()
@@ -28,6 +40,15 @@ def get_db():
     finally:
         db.close()
 
+def get_current_user(request: Request):
+    session_cookie = request.cookies.get("session")
+    if session_cookie:
+        try:
+            username = serializer.loads(session_cookie)
+            return username
+        except Exception:
+            return None
+    return None
 
 @app.api_route("/register", methods=["GET", "POST"])
 async def register(request: Request, db: Session = Depends(get_db)):
@@ -49,6 +70,7 @@ async def register(request: Request, db: Session = Depends(get_db)):
                 "error": "Ez a felhasználónév már foglalt."
             })
 
+        # bcrypt warning: old version fixed
         hashed_pw = bcrypt.hash(password)
         user = models.User(name=name, hashed_password=hashed_pw)
         db.add(user)
@@ -62,15 +84,31 @@ async def register(request: Request, db: Session = Depends(get_db)):
 async def login(request: Request, db: Session = Depends(get_db)):
     if request.method == "POST":
         form = await request.form()
-        email = form.get("email")
+        name = form.get("name")
         password = form.get("password")
-        
-        if not email:
+
+        if not name or not password:
             return templates.TemplateResponse("login.html", {
                 "request": request,
-                "error": "Az email megadása kötelező."
+                "error": "A felhasználónév és a jelszó megadása kötelező."
             })
 
-        return RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
+        user = db.query(models.User).filter(models.User.name == name).first()
+
+        if not user or not bcrypt.verify(password, user.hashed_password):
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "error": "Hibás felhasználónév vagy jelszó."
+            })
+
+        response = RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
+        response.set_cookie(key="session", value=serializer.dumps(user.name), httponly=True)
+        return response
 
     return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
+    response.delete_cookie("session")
+    return response

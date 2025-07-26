@@ -3,8 +3,25 @@
 {% block title %}Bejelentkezés{% endblock %}
 
 {% block content %}
-<h2>Bejelentkezés</h2>
-<form method="post">
-    <!-- form mezők ide -->
-</form>
+<div class="container mt-4">
+    <h2>Bejelentkezés</h2>
+
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+        <div class="mb-3">
+            <label for="name" class="form-label">Felhasználónév</label>
+            <input type="text" class="form-control" name="name" id="name" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Jelszó</label>
+            <input type="password" class="form-control" name="password" id="password" required>
+        </div>
+
+        <button type="submit" class="btn btn-secondary">Bejelentkezés</button>
+    </form>
+</div>
 {% endblock %}
