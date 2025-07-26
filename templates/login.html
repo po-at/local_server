@@ -1,14 +1,10 @@
-<!DOCTYPE html>
-<html lang="hu">
-<head>
-    <meta charset="UTF-8">
-    <title>Bejelentkezés</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <h2>Bejelentkezés</h2>
+{% extends "base.html" %}
 
-    <button type="submit">Bejelentkezés</button>
+{% block title %}Bejelentkezés{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<h2>Bejelentkezés</h2>
+<form method="post">
+    <!-- form mezők ide -->
+</form>
+{% endblock %}

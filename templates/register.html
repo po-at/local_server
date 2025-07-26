@@ -1,20 +1,25 @@
-<!DOCTYPE html>
-<html lang="hu">
-<head>
-    <meta charset="UTF-8">
-    <title>Regisztráció</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
     <h2>Regisztráció</h2>
-    <form action="/register" method="post">
-        <label for="name">Név:</label><br>
-        <input type="text" id="name" name="name" required><br><br>
 
-        <label for="email">Email:</label><br>
-        <input type="email" id="email" name="email" required><br><br>
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
 
-        <button type="submit">Regisztráció</button>
+    <form method="post">
+        <div class="mb-3">
+            <label for="name" class="form-label">Név</label>
+            <input type="text" class="form-control" name="name" id="name" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="email" class="form-label">Email cím</label>
+            <input type="email" class="form-control" name="email" id="email" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Regisztráció</button>
     </form>
-</body>
-</html>
+</div>
+{% endblock %}
