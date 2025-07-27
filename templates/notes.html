@@ -15,14 +15,13 @@
 <hr>
 
 <ul class="list-group mt-4">
-        {% for note in notes %}
-
-        <li class="list-group-item">
-            {{ note.content }}
-            <form method="post" action="/notes/delete/{{ note.id }}" style="display:inline;">
-                <button type="submit" class="btn btn-danger btn-sm">Törlés</button>
-            </form>
-        </li>
-        {% endfor %}
+    {% for note in notes %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+        {{ note.content }}
+        <form method="post" action="/notes/delete/{{ note.id }}">
+            <button type="submit" class="btn btn-danger btn-sm">Törlés</button>
+        </form>
+    </li>
+    {% endfor %}
 </ul>
 {% endblock %}

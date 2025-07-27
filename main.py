@@ -1,8 +1,9 @@
 from urllib import response
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal
 from starlette.status import HTTP_303_SEE_OTHER
@@ -10,9 +11,10 @@ from pathlib import Path
 from passlib.hash import bcrypt
 import models
 from itsdangerous import URLSafeSerializer
-from dotenv import load_dotenv
 import os
-
+import httpx
+from datetime import datetime
+from dotenv import load_dotenv
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -20,6 +22,19 @@ serializer = URLSafeSerializer(SECRET_KEY)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+
+def require_login(request: Request, db: Session):
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        return None
+
+    try:
+        username = serializer.loads(session_cookie)
+    except Exception:
+        return None
+
+    user = db.query(models.User).filter_by(name=username).first()
+    return user
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -122,11 +137,9 @@ async def logout():
 
 @app.api_route("/notes", methods=["GET", "POST"])
 async def notes(request: Request, db: Session = Depends(get_db)):
-    username = get_current_user(request)
-    if not username:
+    user = require_login(request, db)
+    if not user:
         return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
-
-    user = db.query(models.User).filter(models.User.name == username).first()
 
     if request.method == "POST":
         form = await request.form()
@@ -136,24 +149,109 @@ async def notes(request: Request, db: Session = Depends(get_db)):
             db.add(new_note)
             db.commit()
 
-    user_notes = db.query(models.Note).filter(models.Note.user_id == user.id).all()
+    user_notes = db.query(models.Note).filter_by(user_id=user.id).all()
 
     return templates.TemplateResponse("notes.html", {
         "request": request,
-        "notes": user_notes
+        "notes": user_notes,
+        "user": user.name
     })
 
 @app.post("/notes/delete/{note_id}")
 def delete_note(note_id: int, request: Request, db: Session = Depends(get_db)):
-    username = get_current_user(request)
-    if not username:
+    user = require_login(request, db)
+    if not user:
         return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
 
-    user = db.query(models.User).filter_by(name=username).first()
     note = db.query(models.Note).filter_by(id=note_id, user_id=user.id).first()
-    
+
     if note:
         db.delete(note)
         db.commit()
 
     return RedirectResponse(url="/notes", status_code=HTTP_303_SEE_OTHER)
+
+@app.get("/api/openmeteo")
+async def get_weather():
+    latitude = 47.3849
+    longitude = 16.5365
+
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={latitude}&longitude={longitude}"
+        "&current=temperature_2m,apparent_temperature,relative_humidity_2m"
+    )
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=500, content={"error": "API hiba"})
+
+    data = response.json()
+    current = data.get("current", {})
+
+    return {
+        "city": "Bük",
+        "temp": current.get("temperature_2m"),
+        "feels_like": current.get("apparent_temperature"),
+        "humidity": current.get("relative_humidity_2m"),
+    }
+
+@app.get("/weather", response_class=HTMLResponse)
+async def weather_page(request: Request):
+    user = get_current_user(request)
+    return templates.TemplateResponse("weather.html", {"request": request, "user": user})
+
+@app.api_route("/weather", methods=["GET", "POST"])
+async def weather_page_rainfalls(request: Request, db: Session = Depends(get_db)):
+    user_name = get_current_user(request)
+    if not user_name:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    user = db.query(models.User).filter(models.User.name == user_name).first()
+    if user is None:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    if request.method == "POST":
+        form = await request.form()
+        date_str = form.get("date")
+        amount_str = form.get("amount")
+
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            amount = float(amount_str)
+        except (ValueError, TypeError):
+            return templates.TemplateResponse("weather.html", {
+                "request": request,
+                "user": user_name,
+                "error": "Érvénytelen dátum vagy csapadék érték.",
+            })
+
+        # Ellenőrizzük, hogy van-e már adat erre a dátumra (ugyanannál a felhasználónál)
+        existing = db.query(models.Rainfall).filter(
+            models.Rainfall.user_id == user.id,
+            models.Rainfall.date == date_obj
+        ).first()
+
+        if existing:
+            existing.amount = amount  # felülírjuk
+        else:
+            new_rainfall = models.Rainfall(date=date_obj, amount=amount, user_id=user.id)
+            db.add(new_rainfall)
+
+        db.commit()
+
+    # Lekérjük az adott év (most az aktuális év) csapadékösszegét
+    current_year = datetime.now().year
+    total_rainfall = db.query(models.Rainfall).filter(
+        models.Rainfall.user_id == user.id,
+        models.Rainfall.date.between(f"{current_year}-01-01", f"{current_year}-12-31")
+    ).with_entities(func.sum(models.Rainfall.amount)).scalar() or 0.0
+
+    return templates.TemplateResponse("weather.html", {
+        "request": request,
+        "user": user_name,
+        "total_rainfall": total_rainfall,
+    })
+
