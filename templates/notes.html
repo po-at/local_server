@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Jegyzetek{% endblock %}
+
+{% block content %}
+<h2>Jegyzetek</h2>
+
+<form method="post">
+    <div class="mb-3">
+        <textarea name="content" class="form-control" rows="4" placeholder="Új jegyzet..."></textarea>
+    </div>
+    <button type="submit" class="btn btn-secondary">Mentés</button>
+</form>
+
+<hr>
+
+<ul class="list-group mt-4">
+        {% for note in notes %}
+
+        <li class="list-group-item">
+            {{ note.content }}
+            <form method="post" action="/notes/delete/{{ note.id }}" style="display:inline;">
+                <button type="submit" class="btn btn-danger btn-sm">Törlés</button>
+            </form>
+        </li>
+        {% endfor %}
+</ul>
+{% endblock %}

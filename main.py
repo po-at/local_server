@@ -50,6 +50,7 @@ def get_current_user(request: Request):
             return None
     return None
 
+
 @app.api_route("/register", methods=["GET", "POST"])
 async def register(request: Request, db: Session = Depends(get_db)):
     if request.method == "POST":
@@ -102,7 +103,13 @@ async def login(request: Request, db: Session = Depends(get_db)):
             })
 
         response = RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
-        response.set_cookie(key="session", value=serializer.dumps(user.name), httponly=True)
+        response.set_cookie(
+            key="session",
+            value=serializer.dumps(user.name),
+            httponly=True,
+            max_age=None,
+            expires=None
+        )
         return response
 
     return templates.TemplateResponse("login.html", {"request": request})
@@ -112,3 +119,41 @@ async def logout():
     response = RedirectResponse(url="/", status_code=HTTP_303_SEE_OTHER)
     response.delete_cookie("session")
     return response
+
+@app.api_route("/notes", methods=["GET", "POST"])
+async def notes(request: Request, db: Session = Depends(get_db)):
+    username = get_current_user(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    user = db.query(models.User).filter(models.User.name == username).first()
+
+    if request.method == "POST":
+        form = await request.form()
+        content = form.get("content")
+        if content:
+            new_note = models.Note(content=content, user_id=user.id)
+            db.add(new_note)
+            db.commit()
+
+    user_notes = db.query(models.Note).filter(models.Note.user_id == user.id).all()
+
+    return templates.TemplateResponse("notes.html", {
+        "request": request,
+        "notes": user_notes
+    })
+
+@app.post("/notes/delete/{note_id}")
+def delete_note(note_id: int, request: Request, db: Session = Depends(get_db)):
+    username = get_current_user(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    user = db.query(models.User).filter_by(name=username).first()
+    note = db.query(models.Note).filter_by(id=note_id, user_id=user.id).first()
+    
+    if note:
+        db.delete(note)
+        db.commit()
+
+    return RedirectResponse(url="/notes", status_code=HTTP_303_SEE_OTHER)

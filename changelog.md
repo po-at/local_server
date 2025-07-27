@@ -13,7 +13,7 @@
 - login
 - register method (bcrypt)
 ### Added
-- 
+- notes api, save, delete, logout if the browser closed
 - user register, login, session
 - dynamic system JinJa2 (and next: Ajax)
     base.html <- index.html, register.html, login.html
