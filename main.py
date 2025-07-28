@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, Form, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal
 from starlette.status import HTTP_303_SEE_OTHER
@@ -198,13 +198,8 @@ async def get_weather():
         "humidity": current.get("relative_humidity_2m"),
     }
 
-@app.get("/weather", response_class=HTMLResponse)
-async def weather_page(request: Request):
-    user = get_current_user(request)
-    return templates.TemplateResponse("weather.html", {"request": request, "user": user})
-
 @app.api_route("/weather", methods=["GET", "POST"])
-async def weather_page_rainfalls(request: Request, db: Session = Depends(get_db)):
+async def weather_page(request: Request, db: Session = Depends(get_db)):
     user_name = get_current_user(request)
     if not user_name:
         return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
@@ -213,45 +208,120 @@ async def weather_page_rainfalls(request: Request, db: Session = Depends(get_db)
     if user is None:
         return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
 
+    error = None
+    user_temp = None
+    temp_diff = None
+
     if request.method == "POST":
         form = await request.form()
+
         date_str = form.get("date")
         amount_str = form.get("amount")
+        user_temp_str = form.get("user_temp")
 
         try:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-            amount = float(amount_str)
-        except (ValueError, TypeError):
-            return templates.TemplateResponse("weather.html", {
-                "request": request,
-                "user": user_name,
-                "error": "Érvénytelen dátum vagy csapadék érték.",
-            })
+            today = datetime.today().date()
+            open_meteo_data = await get_weather()
+            temp = open_meteo_data.get("temp")
 
-        # Ellenőrizzük, hogy van-e már adat erre a dátumra (ugyanannál a felhasználónál)
-        existing = db.query(models.Rainfall).filter(
-            models.Rainfall.user_id == user.id,
-            models.Rainfall.date == date_obj
-        ).first()
+            # save temperature
+            if user_temp_str:
+                user_temp = float(user_temp_str)
+                diff_value = round(user_temp - temp, 1) if temp is not None else None
 
-        if existing:
-            existing.amount = amount  # felülírjuk
-        else:
-            new_rainfall = models.Rainfall(date=date_obj, amount=amount, user_id=user.id)
-            db.add(new_rainfall)
+                existing_temp = db.query(models.UserAddTemperature).filter(
+                    models.UserAddTemperature.user_id == user.id,
+                    models.UserAddTemperature.date == today
+                ).first()
 
-        db.commit()
+                if existing_temp:
+                    existing_temp.content = user_temp
+                    existing_temp.amount = diff_value
+                else:
+                    new_temp = models.UserAddTemperature(
+                        date=today,
+                        content=user_temp,
+                        amount=diff_value,
+                        user_id=user.id
+                    )
+                    db.add(new_temp)
 
-    # Lekérjük az adott év (most az aktuális év) csapadékösszegét
+            #  save rainfall data
+            if date_str and amount_str:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+                amount = float(amount_str)
+
+                existing = db.query(models.Rainfall).filter(
+                    models.Rainfall.user_id == user.id,
+                    models.Rainfall.date == date_obj
+                ).first()
+
+                if existing:
+                    existing.amount = amount
+                else:
+                    new_rainfall = models.Rainfall(
+                        date=date_obj,
+                        amount=amount,
+                        user_id=user.id
+                    )
+                    db.add(new_rainfall)
+
+            db.commit()
+
+        except Exception:
+            error = "Érvénytelen adatbevitel."
+
     current_year = datetime.now().year
     total_rainfall = db.query(models.Rainfall).filter(
         models.Rainfall.user_id == user.id,
         models.Rainfall.date.between(f"{current_year}-01-01", f"{current_year}-12-31")
     ).with_entities(func.sum(models.Rainfall.amount)).scalar() or 0.0
 
+    open_meteo_data = await get_weather()
+    temp = open_meteo_data.get("temp")
+
+    today = datetime.today().date()
+    temp_obj = db.query(models.UserAddTemperature).filter(
+        models.UserAddTemperature.user_id == user.id,
+        models.UserAddTemperature.date == today
+    ).first()
+
+    if temp_obj:
+        user_temp = temp_obj.content
+        temp_diff = temp_obj.amount
+
+    # database query for previous temperature differences
+    temperature_logs = db.query(models.UserAddTemperature).filter(
+        models.UserAddTemperature.user_id == user.id
+    ).order_by(models.UserAddTemperature.date.desc()).all()
+
     return templates.TemplateResponse("weather.html", {
         "request": request,
         "user": user_name,
         "total_rainfall": total_rainfall,
+        "temp": temp,
+        "feels_like": open_meteo_data.get("feels_like"),
+        "humidity": open_meteo_data.get("humidity"),
+        "user_temp": user_temp,
+        "temp_diff": temp_diff,
+        "temperature_logs": temperature_logs,
+        "error": error
     })
 
+    previous_diffs = db.query(models.UserAddTemperature).filter(
+        models.UserAddTemperature.user_id == user.id,
+        models.UserAddTemperature.amount != None
+    ).order_by(desc(models.UserAddTemperature.date)).limit(30).all()
+
+    return templates.TemplateResponse("weather.html", {
+        "request": request,
+        "user": user_name,
+        "total_rainfall": total_rainfall,
+        "temp": temp,
+        "feels_like": open_meteo_data.get("feels_like"),
+        "humidity": open_meteo_data.get("humidity"),
+        "user_temp": user_temp,
+        "temp_diff": temp_diff,
+        "error": error,
+        "previous_diffs": previous_diffs,
+    })

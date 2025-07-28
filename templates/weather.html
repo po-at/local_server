@@ -3,46 +3,78 @@
 {% block title %}Időjárás - Bük{% endblock %}
 
 {% block content %}
-<h2>Aktuális időjárás - Bük</h2>
+<h2>Aktuális időjárás - Bük (Open-Meteo)</h2>
 
 <div id="weather-box" class="mt-4">
-    <p><strong>Hőmérséklet:</strong> <span id="temp">Betöltés...</span> °C</p>
-    <p><strong>Hőérzet:</strong> <span id="feels_like">Betöltés...</span> °C</p>
-    <p><strong>Páratartalom:</strong> <span id="humidity">Betöltés...</span> %</p>
+    <p><strong>Hőmérséklet:</strong> {{ temp if temp is not none else "n/a" }} °C (saját mért érték: </strong> {{
+        user_temp if user_temp is not none else "nincs megadva" }} °C) <strong>Különbség:</strong>
+        {% if temp_diff is not none %}
+        {{ temp_diff }} °C
+        {% else %}
+        nincs adat
+        {% endif %}
+    </p>
+    <p><strong>Hőérzet:</strong> {{ feels_like if feels_like is not none else "n/a" }} °C</p>
+    <p><strong>Páratartalom:</strong> {{ humidity if humidity is not none else "n/a" }} %</p>
 </div>
+
+{% if error %}
+<div class="alert alert-danger mt-3">{{ error }}</div>
+{% endif %}
 
 <hr>
 
-<h3>Esett</h3>
+<h3>Adatok felvitele</h3>
 
 <form method="post" class="mb-4">
     <div class="mb-3">
-        <label for="date" class="form-label">Dátum:</label>
-        <input type="date" class="form-control" id="date" name="date" required>
+        <label for="user_temp" class="form-label">Saját mért hőmérséklet (°C):</label>
+        <input type="number" class="form-control" id="user_temp" name="user_temp" step="0.1">
+        <small class="form-text text-muted">Ez az érték csak a mai napra lesz mentve.</small>
+    </div>
+
+    <hr>
+
+    <div class="mb-3">
+        <label for="date" class="form-label">Ekkor esett:</label>
+        <input type="date" class="form-control" id="date" name="date">
     </div>
     <div class="mb-3">
         <label for="amount" class="form-label">Csapadékmennyiség (mm):</label>
-        <input type="number" class="form-control" id="amount" name="amount" step="0.1" required>
+        <input type="number" class="form-control" id="amount" name="amount" step="0.1">
     </div>
+
     <button type="submit" class="btn btn-secondary">Mentés</button>
 </form>
 
-<p><strong>Éves összes csapadék:</strong> {{ total_rainfall }} mm (törlés: adott napra 0 mm)</p>
+<p><strong>Éves összes csapadék:</strong> {{ total_rainfall }} mm</p>
 
-<script>
-    async function loadWeather() {
-        try {
-            const response = await fetch("/api/openmeteo");
-            const data = await response.json();
+<hr>
 
-            document.getElementById("temp").textContent = data.temp ?? "n/a";
-            document.getElementById("feels_like").textContent = data.feels_like ?? "n/a";
-            document.getElementById("humidity").textContent = data.humidity ?? "n/a";
-        } catch (error) {
-            document.getElementById("weather-box").innerHTML = "<p class='text-danger'>Nem sikerült lekérni az időjárást.</p>";
-        }
-    }
+<hr>
+<h3>Korábbi hőmérséklet-különbségek</h3>
 
-    loadWeather();
-</script>
+{% if temperature_logs and temperature_logs|length > 0 %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Dátum</th>
+            <th>Hőmérséklet (°C)</th>
+            <th>Különbség (°C)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in temperature_logs %}
+        <tr>
+            <td>{{ entry.date }}</td>
+            <td>{{ entry.content }}</td>
+            <td>{{ entry.amount }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Nincs korábbi adat.</p>
+{% endif %}
+
 {% endblock %}
