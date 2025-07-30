@@ -1,16 +1,17 @@
 # Changelog
 
 ### Fixed
-- 
+- css
 ### Added
-- 
-## [1.0.3] - 2025-1-
+- weather / rainfall groups
+- shopping list
+## [1.0.3] - 2025-07-30
 
 ### Fixed
 - user logout
 ### Added
 - user add temperations
-## [1.0.2] - 2025-0-28
+## [1.0.2] - 2025-07-28
 
 ### Added
 - weather app

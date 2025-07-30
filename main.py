@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, Form, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, extract
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal
 from starlette.status import HTTP_303_SEE_OTHER
@@ -14,6 +14,9 @@ from itsdangerous import URLSafeSerializer
 import os
 import httpx
 from datetime import datetime
+from collections import defaultdict
+import locale
+locale.setlocale(locale.LC_TIME, 'hu_HU.UTF-8')
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -135,6 +138,42 @@ async def logout():
     response.delete_cookie("session")
     return response
 
+
+@app.api_route("/shopping-list", methods=["GET", "POST"])
+async def shopping_list(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    if request.method == "POST":
+        form = await request.form()
+        content = form.get("content")
+        if content:
+            new_item = models.ShoppingList(content=content, user_id=user.id)
+            db.add(new_item)
+            db.commit()
+
+    items = db.query(models.ShoppingList).order_by(models.ShoppingList.id.desc()).all()
+
+    return templates.TemplateResponse("shopping-list.html", {
+        "request": request,
+        "items": items,
+        "user": user.name
+    })
+
+@app.post("/shopping-list/delete/{item_id}")
+def delete_item(item_id: int, request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    item = db.query(models.ShoppingList).filter_by(id=item_id).first()
+    if item:
+        db.delete(item)
+        db.commit()
+
+    return RedirectResponse(url="/shopping-list", status_code=HTTP_303_SEE_OTHER)
+
 @app.api_route("/notes", methods=["GET", "POST"])
 async def notes(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
@@ -213,24 +252,22 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
     temp_diff = None
 
     if request.method == "POST":
-        form = await request.form()
-
-        date_str = form.get("date")
-        amount_str = form.get("amount")
-        user_temp_str = form.get("user_temp")
-
         try:
+            form = await request.form()
+            date_str = form.get("date")
+            amount_str = form.get("amount")
+            user_temp_str = form.get("user_temp")
+
             today = datetime.today().date()
             open_meteo_data = await get_weather()
             temp = open_meteo_data.get("temp")
 
-            # save temperature
+            # Hőmérséklet mentése (maira)
             if user_temp_str:
                 user_temp = float(user_temp_str)
                 diff_value = round(user_temp - temp, 1) if temp is not None else None
 
                 existing_temp = db.query(models.UserAddTemperature).filter(
-                    models.UserAddTemperature.user_id == user.id,
                     models.UserAddTemperature.date == today
                 ).first()
 
@@ -246,13 +283,12 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
                     )
                     db.add(new_temp)
 
-            #  save rainfall data
+            # Csapadék mentése tetszőleges dátumra
             if date_str and amount_str:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
                 amount = float(amount_str)
 
                 existing = db.query(models.Rainfall).filter(
-                    models.Rainfall.user_id == user.id,
                     models.Rainfall.date == date_obj
                 ).first()
 
@@ -268,21 +304,21 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
 
             db.commit()
 
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.error(f"Adatbevitel hiba: {e}")
             error = "Érvénytelen adatbevitel."
 
     current_year = datetime.now().year
-    total_rainfall = db.query(models.Rainfall).filter(
-        models.Rainfall.user_id == user.id,
+    total_rainfall = db.query(func.sum(models.Rainfall.amount)).filter(
         models.Rainfall.date.between(f"{current_year}-01-01", f"{current_year}-12-31")
-    ).with_entities(func.sum(models.Rainfall.amount)).scalar() or 0.0
+    ).scalar() or 0.0
 
     open_meteo_data = await get_weather()
     temp = open_meteo_data.get("temp")
 
     today = datetime.today().date()
     temp_obj = db.query(models.UserAddTemperature).filter(
-        models.UserAddTemperature.user_id == user.id,
         models.UserAddTemperature.date == today
     ).first()
 
@@ -290,28 +326,21 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
         user_temp = temp_obj.content
         temp_diff = temp_obj.amount
 
-    # database query for previous temperature differences
-    temperature_logs = db.query(models.UserAddTemperature).filter(
-        models.UserAddTemperature.user_id == user.id
-    ).order_by(models.UserAddTemperature.date.desc()).all()
-
-    return templates.TemplateResponse("weather.html", {
-        "request": request,
-        "user": user_name,
-        "total_rainfall": total_rainfall,
-        "temp": temp,
-        "feels_like": open_meteo_data.get("feels_like"),
-        "humidity": open_meteo_data.get("humidity"),
-        "user_temp": user_temp,
-        "temp_diff": temp_diff,
-        "temperature_logs": temperature_logs,
-        "error": error
-    })
-
     previous_diffs = db.query(models.UserAddTemperature).filter(
-        models.UserAddTemperature.user_id == user.id,
         models.UserAddTemperature.amount != None
     ).order_by(desc(models.UserAddTemperature.date)).limit(30).all()
+
+    rainfall_entries = db.query(models.Rainfall).filter().all()
+
+    rainfall_data = {}
+    for entry in rainfall_entries:
+        year = entry.date.year
+        month = entry.date.strftime("%B")
+        if year not in rainfall_data:
+            rainfall_data[year] = {}
+        if month not in rainfall_data[year]:
+            rainfall_data[year][month] = []
+        rainfall_data[year][month].append((entry.date, entry.amount))
 
     return templates.TemplateResponse("weather.html", {
         "request": request,
@@ -324,4 +353,5 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
         "temp_diff": temp_diff,
         "error": error,
         "previous_diffs": previous_diffs,
+        "rainfall_data": rainfall_data
     })

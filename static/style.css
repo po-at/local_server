@@ -3,23 +3,15 @@ body {
     margin: 25px;
 }
 
+a {
+    color: black;
+    text-decoration: none;
+}
+
 .al-ce {
     margin-top: 15px;
     width: 50%;
     align-self: center;
     text-align: center;
     background-color: #77af99;
-}
-.card {
-    background-color: #1a4158;
-    color: #2ef338;
-}
-
-.card-subtitle {
-    color: #97b1c0;
-}
-
-p.card-text {
-    text-align: right;
-    color: #166c9e;
 }

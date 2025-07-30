@@ -7,12 +7,7 @@
 
 <div id="weather-box" class="mt-4">
     <p><strong>Hőmérséklet:</strong> {{ temp if temp is not none else "n/a" }} °C (saját mért érték: </strong> {{
-        user_temp if user_temp is not none else "nincs megadva" }} °C) <strong>Különbség:</strong>
-        {% if temp_diff is not none %}
-        {{ temp_diff }} °C
-        {% else %}
-        nincs adat
-        {% endif %}
+        user_temp if user_temp is not none else "nincs megadva" }} °C)
     </p>
     <p><strong>Hőérzet:</strong> {{ feels_like if feels_like is not none else "n/a" }} °C</p>
     <p><strong>Páratartalom:</strong> {{ humidity if humidity is not none else "n/a" }} %</p>
@@ -30,7 +25,7 @@
     <div class="mb-3">
         <label for="user_temp" class="form-label">Saját mért hőmérséklet (°C):</label>
         <input type="number" class="form-control" id="user_temp" name="user_temp" step="0.1">
-        <small class="form-text text-muted">Ez az érték csak a mai napra lesz mentve.</small>
+        <small class="form-text text-muted">Naponta egy hőmérsékletet tárol!</small>
     </div>
 
     <hr>
@@ -49,12 +44,10 @@
 
 <p><strong>Éves összes csapadék:</strong> {{ total_rainfall }} mm</p>
 
-<hr>
+<hr> <hr>
 
-<hr>
+{% if previous_diffs and previous_diffs|length > 0 %}
 <h3>Korábbi hőmérséklet-különbségek</h3>
-
-{% if temperature_logs and temperature_logs|length > 0 %}
 <table class="table table-striped">
     <thead>
         <tr>
@@ -64,7 +57,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for entry in temperature_logs %}
+    {% for entry in previous_diffs %}
         <tr>
             <td>{{ entry.date }}</td>
             <td>{{ entry.content }}</td>
@@ -76,5 +69,38 @@
 {% else %}
 <p>Nincs korábbi adat.</p>
 {% endif %}
+
+<h3>
+  <a data-bs-toggle="collapse" href="#rainfallCollapse" role="button" aria-expanded="false" aria-controls="rainfallCollapse">
+    + Korábbi adatok (éves, havi, napi bontásban)
+  </a>
+</h3>
+<div class="collapse" id="rainfallCollapse">
+  {% for year, months in rainfall_data.items() %}
+    <div class="card my-2">
+      <div class="card-header">
+        <a data-bs-toggle="collapse" href="#year-{{ year }}" role="button">+ {{ year }}</a>
+      </div>
+      <div class="collapse" id="year-{{ year }}">
+        <div class="card-body">
+          {% for month, days in months.items() %}
+            <div class="mb-2">
+              <a data-bs-toggle="collapse" href="#month-{{ year }}-{{ month }}" role="button">
+                + {{ month }}: {{ days | map(attribute=1) | sum | round(1) }} mm
+              </a>
+              <div class="collapse ps-3" id="month-{{ year }}-{{ month }}">
+                <ul>
+                  {% for date, amount in days %}
+                    <li>{{ date }}: {{ amount }} mm</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
 
 {% endblock %}
