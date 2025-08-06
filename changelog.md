@@ -3,6 +3,13 @@
 ### Fixed
 - css
 ### Added
+- arranger app
+- arranger.html
+## [1.0.4] - 2025-08-06
+
+### Fixed
+- css
+### Added
 - weather / rainfall groups
 - shopping list
 ## [1.0.3] - 2025-07-30

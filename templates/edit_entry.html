@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Bejegyzés szerkesztése{% endblock %}
+
+{% block content %}
+<h2>Bejegyzés módosítása</h2>
+
+<form method="post" action="/arranger/update/{{ entry.id }}">
+  <div class="mb-3">
+    <textarea name="content" class="form-control" rows="4">{{ entry.content }}</textarea>
+  </div>
+  <button type="submit" class="btn btn-success">Mentés</button>
+  <a href="/arranger?selected_tag_id={{ entry.tag_id }}" class="btn btn-secondary">Mégse</a>
+</form>
+{% endblock %}

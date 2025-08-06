@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Rendező{% endblock %}
+
+{% block content %}
+<h3>Címke hozzáadása:</h3>
+<form method="post">
+  <input type="hidden" name="action" value="create_or_select">
+  <div class="input-group mb-3">
+    <input type="text" name="tag_name" class="form-control" placeholder="Új címke neve...">
+    <button type="submit" class="btn btn-primary">Hozzáadás</button>
+  </div>
+</form>
+
+<h3>Vagy címke megjelenítése:</h3>
+<form method="post" class="mb-3">
+  <input type="hidden" name="action" value="view_entries">
+  <div class="input-group">
+    <select name="view_tag_id" class="form-select">
+      <option value="">Címke kiválasztása</option>
+      {% for tag in tags %}
+      <option value="{{ tag.id }}" {% if selected_tag_id == tag.id %}selected{% endif %}>
+        {{ tag.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Megjelenítés</button>
+  </div>
+</form>
+
+{% if selected_tag_id %}
+<form method="post">
+  <input type="hidden" name="action" value="add_text">
+  <input type="hidden" name="selected_tag_id" value="{{ selected_tag_id }}">
+  <div class="mb-3">
+    <textarea name="tag_text" class="form-control" rows="3" placeholder="Szöveg hozzáadása..."></textarea>
+  </div>
+  <button type="submit" class="btn btn-primary">Szöveg mentése</button>
+</form>
+{% endif %}
+
+{% if selected_tag_entries %}
+<h4>{{ selected_tag_name }} bejegyzései:</h4>
+<ul class="list-group mt-3">
+  {% for entry in selected_tag_entries %}
+  <li class="list-group-item">
+    <form method="post" class="d-flex align-items-center gap-2">
+      <input type="hidden" name="entry_id" value="{{ entry.id }}">
+      <input type="hidden" name="view_tag_id" value="{{ selected_tag_id }}">
+      
+      <input type="text" name="edited_text" class="form-control" value="{{ entry.content }}">
+
+      <button type="submit" name="action" value="edit_entry" class="btn btn-success btn-sm">Módosítás</button>
+      <button type="submit" name="action" value="delete_entry" class="btn btn-danger btn-sm">Törlés</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if message %}
+<div class="alert alert-info mt-3">{{ message }}</div>
+{% endif %}
+{% endblock %}

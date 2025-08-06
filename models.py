@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey, Text, DateTime
 from sqlalchemy.orm import relationship
+from datetime import datetime
 from database import Base
 
 class User(Base):
@@ -38,7 +39,6 @@ class Rainfall(Base):
 
     user = relationship("User", back_populates="rainfalls")
 
-
 class UserAddTemperature(Base):
     __tablename__ = "addtemperatures"
     id = Column(Integer, primary_key=True, index=True)
@@ -48,3 +48,21 @@ class UserAddTemperature(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
 
     user = relationship("User", back_populates="addtemperatures")
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+
+    entries = relationship("TagEntry", back_populates="tag", cascade="all, delete-orphan")
+
+class TagEntry(Base):
+    __tablename__ = "tag_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    tag_id = Column(Integer, ForeignKey("tags.id"))
+    tag = relationship("Tag", back_populates="entries")

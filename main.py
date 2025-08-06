@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSON
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, desc, extract
 from sqlalchemy.orm import Session
-from database import engine, SessionLocal
+from database import engine, SessionLocal, get_db
 from starlette.status import HTTP_303_SEE_OTHER
 from pathlib import Path
 from passlib.hash import bcrypt
@@ -15,6 +15,7 @@ import os
 import httpx
 from datetime import datetime
 from collections import defaultdict
+from typing import Optional
 import locale
 locale.setlocale(locale.LC_TIME, 'hu_HU.UTF-8')
 from dotenv import load_dotenv
@@ -354,4 +355,92 @@ async def weather_page(request: Request, db: Session = Depends(get_db)):
         "error": error,
         "previous_diffs": previous_diffs,
         "rainfall_data": rainfall_data
+    })
+
+@app.api_route("/arranger", methods=["GET", "POST"])
+async def arranger_page(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+
+    message = None
+    tags = db.query(models.Tag).order_by(models.Tag.name).all()
+    selected_tag_id = None
+    selected_tag_entries = []
+    selected_tag_name = None  # új
+
+    if request.method == "POST":
+        form = await request.form()
+        action = form.get("action")
+
+        if action == "create_or_select":
+            tag_name = form.get("tag_name", "").strip()
+            if not tag_name:
+                message = "Nem adtál meg címkét."
+            else:
+                existing_tag = db.query(models.Tag).filter_by(name=tag_name).first()
+                if existing_tag:
+                    message = f"A(z) '{tag_name}' címke már létezik."
+                    selected_tag_id = existing_tag.id
+                else:
+                    new_tag = models.Tag(name=tag_name)
+                    db.add(new_tag)
+                    db.commit()
+                    db.refresh(new_tag)
+                    selected_tag_id = new_tag.id
+                    message = f"A(z) '{tag_name}' címke sikeresen létrehozva."
+
+        elif action == "add_text":
+            selected_tag_id = int(form.get("selected_tag_id", "0"))
+            text = form.get("tag_text", "").strip()
+            if not selected_tag_id:
+                message = "Előbb válassz ki egy címkét, amelyhez hozzáadod a szöveget."
+            elif not text:
+                message = "Nem írtál be szöveget."
+            else:
+                new_entry = models.TagEntry(content=text, tag_id=selected_tag_id)
+                db.add(new_entry)
+                db.commit()
+                message = "Szöveg sikeresen hozzáadva."
+
+        elif action == "view_entries":
+            selected_tag_id = int(form.get("view_tag_id", "0"))
+
+        elif action == "edit_entry":
+            entry_id = int(form.get("entry_id", "0"))
+            new_text = form.get("edited_text", "").strip()
+            if entry_id and new_text:
+                entry = db.query(models.TagEntry).filter_by(id=entry_id).first()
+                if entry:
+                    entry.content = new_text
+                    db.commit()
+                    message = "Bejegyzés módosítva."
+                selected_tag_id = entry.tag_id
+
+        elif action == "delete_entry":
+            entry_id = int(form.get("entry_id", "0"))
+            if entry_id:
+                entry = db.query(models.TagEntry).filter_by(id=entry_id).first()
+                if entry:
+                    selected_tag_id = entry.tag_id
+                    db.delete(entry)
+                    db.commit()
+                    message = "Bejegyzés törölve."
+
+    if selected_tag_id:
+        selected_tag_entries = db.query(models.TagEntry).filter_by(
+            tag_id=selected_tag_id
+        ).order_by(models.TagEntry.created_at.desc()).all()
+        tag_obj = db.query(models.Tag).filter_by(id=selected_tag_id).first()
+        if tag_obj:
+            selected_tag_name = tag_obj.name
+
+    return templates.TemplateResponse("arranger.html", {
+        "request": request,
+        "tags": tags,
+        "selected_tag_id": selected_tag_id,
+        "selected_tag_entries": selected_tag_entries,
+        "selected_tag_name": selected_tag_name,
+        "message": message,
+        "user": user.name
     })
